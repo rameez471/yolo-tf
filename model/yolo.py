@@ -154,3 +154,11 @@ def get_absolute_yolo_box(y_pred,valid_anchors_wh,num_classes):
 
     y_box = tf.concat([b_xy,b_wh],axis=1)
 
+
+class YoloLoss(object):
+    def __init__(self,num_classes,valid_anchors_wh):
+        self.num_classes = num_classes
+        self.ignore_threshold = 0.5
+        self.valid_anchors_wh = valid_anchors_wh
+        self.lambda_coord = 5.0
+        self.lambda_noobj = 0.5
