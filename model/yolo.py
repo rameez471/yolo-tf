@@ -9,10 +9,14 @@ from tensorflow.keras.layers import  (
     MaxPool2D,
     BatchNormalization,
     LeakyReLU,
-    Upsampling2D
+    Upsampling2D,
+    Lambda,
     )
-
 from tensorflow.keras.models import Model
+
+anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
+                       [59, 119], [116, 90], [156, 198], [373, 326]],
+                      np.float32) / 416
 
 def  YoloConv(inputs,filters,kernel_size,strides):
     x = Conv2D(filters=filters,kernel_size=kernel_size,
@@ -122,4 +126,31 @@ def YoloV3(shape=(416,416,3),num_classes=2,training=False):
     if training:
         return Model(inputs,(y_samll,y_medium,y_large))
 
+    box_small = Lambda(lambda x:get_absolute_yolo_box(x,anchors_wh[0:3],num_classes))(y_small)
+    box_medium = Lambda(lambda x:get_absolute_yolo_box(x,anchors_wh[3:6],num_classes))(y_medium)
+    box_large = Lambda(lambda x:get_absolute_yolo(x,anchors_wh[6:9],num_classes))(y_large)
+
+    outputs = (box_small,box_medium,box_large)
+    return Model(inputs,outputs)
+    
+def get_absolute_yolo_box(y_pred,valid_anchors_wh,num_classes):
+    t_xy,t_wh,objectness,classes = tf.split(
+        y_pred,(2,2,1,num_classes),axis=-1
+    )
+
+    objectness = tf.sigmoid(objectness)
+    classes = tf.sigmoid(classes)
+
+    grid_size = tf.shape(y_pred)[1]
+
+    C_xy = tf.meshgrid(tf.range(grid_size),tf.range(grid_size))
+    C_xy = tf.stack(C_xy,axis=-1)
+    C_xy = tf.expand_dims(C_xy,axis=2)
+
+    b_xy = tf.sigmoid(t_xy) + tf.cast(C_xy, tf.float32)
+    b_xy = b_xy / tf.cast(grid_size,tf.float32)
+
+    b_wh = tf.exp(t_wh) *valid_anchors_wh
+
+    y_box = tf.concat([b_xy,b_wh],axis=1)
 
