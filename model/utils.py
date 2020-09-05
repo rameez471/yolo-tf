@@ -27,7 +27,7 @@ def xywh_to_y1x1y2x2(box):
     y_box = tf.concat([y1x1,y2x2],axis=-1)
     return y_box
 
-def binary_crossentropy(logits.labels):
+def binary_crossentropy(logits,labels):
     
     epsilon = 1e-7
     logits = tf.clip_by_value(logits,epsilon,1-epsilon)

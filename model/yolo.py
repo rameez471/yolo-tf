@@ -13,7 +13,7 @@ from tensorflow.keras.layers import  (
     Lambda,
     )
 from tensorflow.keras.models import Model
-from utils import xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_cross_entropy
+from utils import xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
 
 anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
                        [59, 119], [116, 90], [156, 198], [373, 326]],
@@ -68,7 +68,7 @@ def Darknet(shape=(256,256,3)):
         x = YoloResidual(x,filters=512)
     y2 = x
 
-    return Model(inputs,(y0,y1,y1),name='darknet_53')
+    return Model(inputs,(y0,y1,y2),name='darknet_53')
 
 def YoloV3(shape=(416,416,3),num_classes=2,training=False):
 
@@ -127,9 +127,9 @@ def YoloV3(shape=(416,416,3),num_classes=2,training=False):
     if training:
         return Model(inputs,(y_samll,y_medium,y_large))
 
-    box_small = Lambda(lambda x:get_absolute_yolo_box(x,anchors_wh[0:3],num_classes))(y_small)
-    box_medium = Lambda(lambda x:get_absolute_yolo_box(x,anchors_wh[3:6],num_classes))(y_medium)
-    box_large = Lambda(lambda x:get_absolute_yolo(x,anchors_wh[6:9],num_classes))(y_large)
+    box_small = Lambda(lambda  x: get_absolute_yolo_box(x,anchors_wh[0:3],num_classes))(y_small)
+    box_medium = Lambda(lambda x: get_absolute_yolo_box(x,anchors_wh[3:6],num_classes))(y_medium)
+    box_large = Lambda(lambda  x: get_absolute_yolo_box(x,anchors_wh[6:9],num_classes))(y_large)
 
     outputs = (box_small,box_medium,box_large)
     return Model(inputs,outputs)
@@ -151,9 +151,30 @@ def get_absolute_yolo_box(y_pred,valid_anchors_wh,num_classes):
     b_xy = tf.sigmoid(t_xy) + tf.cast(C_xy, tf.float32)
     b_xy = b_xy / tf.cast(grid_size,tf.float32)
 
-    b_wh = tf.exp(t_wh) *valid_anchors_wh
+    b_wh = tf.exp(t_wh) * valid_anchors_wh
 
     y_box = tf.concat([b_xy,b_wh],axis=1)
+
+    return y_box,objectness,classes
+
+def get_relative_yolo_box(y_true,valid_anchors_wh):
+
+    grid_size = tf.shape(y_true)[1]
+    C_xy = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
+    C_xy = tf.expand_dims(tf.stack(C_xy, axis=-1), axis=2)
+
+    b_xy = y_true[..., 0:2]
+    b_wh = y_true[..., 2:4]
+    t_xy = b_xy * tf.cast(grid_size, tf.float32) - tf.cast(C_xy, tf.float32)
+
+    t_wh = tf.math.log(b_wh / valid_anchors_wh)
+    # b_wh could have some cells are 0, divided by anchor could result in inf or nan
+    t_wh = tf.where(
+        tf.logical_or(tf.math.is_inf(t_wh), tf.math.is_nan(t_wh)),
+        tf.zeros_like(t_wh), t_wh)
+
+    y_box = tf.concat([t_xy, t_wh], axis=-1)
+    return y_box
 
 
 class YoloLoss(object):
@@ -173,14 +194,14 @@ class YoloLoss(object):
         pred_box_abs, pred_obj, pred_class = get_absolute_yolo_box(
             y_pred,self.valid_anchors_wh,self.num_classes
         )
-        pred_box_abs = xywh_to_x1x2y1y1(pred_box_abs)
+        pred_box_abs = xywh_to_x1x2y1y2(pred_box_abs)
 
         true_xy_abs, true_wh_abs,true_obj,true_class = tf.split(
             y_true,(2,2,1,self.num_classes),axis=-1)
         true_box_abs = tf.concat([true_xy_abs,true_wh_abs],axis=-1)
-        true_box_abs = xywh_to_x1x2y1y1(true_box_abs)
+        true_box_abs = xywh_to_x1x2y1y2(true_box_abs)
 
-        true_box_rel = get_absolute_yolo_box(y_true,self.valid_anchors_wh)
+        true_box_rel = get_relative_yolo_box(y_true,self.valid_anchors_wh)
         true_xy_rel = true_box_rel[...,0:2]
         true_wh_rel = true_box_abs[...,2:4]
 
@@ -217,7 +238,7 @@ class YoloLoss(object):
 
         return ignore_mask
 
-    def clac_obj_loss(self,true_obj,pred_obj,ignore_mask):
+    def calc_obj_loss(self,true_obj,pred_obj,ignore_mask):
 
         obj_entropy = binary_crossentropy(pred_obj,true_obj)
         noobj_loss = (1-true_obj)*obj_entropy * ignore_mask
