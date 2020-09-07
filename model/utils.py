@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-def xywh_to_x1x2y1y1(box):
+def xywh_to_x1x2y1y2(box):
 
     xy = box[...,0:2]
     wh = box[...,2:4]

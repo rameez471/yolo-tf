@@ -9,11 +9,11 @@ from tensorflow.keras.layers import  (
     MaxPool2D,
     BatchNormalization,
     LeakyReLU,
-    Upsampling2D,
+    UpSampling2D,
     Lambda,
     )
 from tensorflow.keras.models import Model
-from utils import xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
+from model.utils import xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
 
 anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
                        [59, 119], [116, 90], [156, 198], [373, 326]],
@@ -91,7 +91,7 @@ def YoloV3(shape=(416,416,3),num_classes=2,training=False):
     ## Medium Scale Detection
 
     x = YoloConv(x,filters=256,kernel_size=3,strides=1)
-    x = Upsampling2D(size=(2,2))(x)
+    x = UpSampling2D(size=(2,2))(x)
     x = Concatenate()([x,x_medium])
     x = YoloConv(x,filters=256,kernel_size=1,strides=1)
     x = YoloConv(x,filters=512,kernel_size=3,strides=1)
@@ -105,8 +105,8 @@ def YoloV3(shape=(416,416,3),num_classes=2,training=False):
     ## Small Scale Detection
 
     x = YoloConv(x,filters=128,kernel_size=1,strides=1)
-    x = Upsampling2D(size=(2,2))(x)
-    x = Concatenate()[x,x_small]
+    x = UpSampling2D(size=(2,2))(x)
+    x = Concatenate()([x,x_small])
     x = YoloConv(x,filters=128,kernel_size=1,strides=1)
     x = YoloConv(x,filters=256,kernel_size=3,strides=1)
     x = YoloConv(x,filters=128,kernel_size=1,strides=1)
@@ -116,16 +116,16 @@ def YoloV3(shape=(416,416,3),num_classes=2,training=False):
     y_small = YoloConv(x,filters=256,kernel_size=3,strides=1)
     y_small = Conv2D(filters=final_filters,kernel_size=1,strides=1,padding='same')(y_small)
 
-    y_samll_shape = tf.shape(y_small)
+    y_small_shape = tf.shape(y_small)
     y_medium_shape = tf.shape(y_medium)
     y_large_shape = tf.shape(y_large)
 
-    y_samll = tf.reshape(y_small,(y_samll_shape[0],y_samll_shape[1],y_samll_shape[2],3,-1))
+    y_small = tf.reshape(y_small,(y_small_shape[0],y_small_shape[1],y_small_shape[2],3,-1))
     y_medium = tf.reshape(y_medium,(y_medium_shape[0],y_medium_shape[1],y_medium_shape[2],3,-1))
     y_large = tf.reshape(y_large,(y_large_shape[0],y_large_shape[1],y_large_shape[2],3,-1))
 
     if training:
-        return Model(inputs,(y_samll,y_medium,y_large))
+        return Model(inputs,(y_small,y_medium,y_large))
 
     box_small = Lambda(lambda  x: get_absolute_yolo_box(x,anchors_wh[0:3],num_classes))(y_small)
     box_medium = Lambda(lambda x: get_absolute_yolo_box(x,anchors_wh[3:6],num_classes))(y_medium)
