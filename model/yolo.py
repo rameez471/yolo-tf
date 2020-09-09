@@ -20,6 +20,7 @@ anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
                       np.float32) / 416
 
 def  YoloConv(inputs,filters,kernel_size,strides):
+    
     x = Conv2D(filters=filters,kernel_size=kernel_size,
                 strides=strides,padding='same')(inputs)
     x = BatchNormalization()(x)
