@@ -1,1 +1,7 @@
 /data
+
+
+*.jpg
+*.png
+*.weights
+*.h5

@@ -19,12 +19,7 @@ from tensorflow.keras.layers import  (
     )
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2
-from model.utils import compose,xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
-
-anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
-                       [59, 119], [116, 90], [156, 198], [373, 326]],
-                      np.float32) / 416
-
+from model.utils import compose
 
 @wraps(Conv2D)
 def DarknetConv2D(*args,**kwargs):
@@ -167,7 +162,7 @@ def yolo_eval(yolo_outputs,anchors,num_classes,image_shape,
     anchor_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]] if num_layers == 3 else [[3, 4, 5], [1, 2, 3]]
     input_shape = K.shape(yolo_outputs[0])[1:3] * 32
     boxes = []
-    box_scores
+    box_scores = []
     for l in range(num_layers):
         _boxes, _box_scores = yolo_boxes_and_scores(yolo_outputs[l],
                                                     anchors[anchor_mask[l]],num_classes,input_shape,image_shape)
