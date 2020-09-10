@@ -1,4 +1,8 @@
+""" YOLO v3 Model defined in Keras"""
+from functools import wraps
+
 import tensorflow as tf 
+import tensorflow.keras.backend as K
 import numpy as np
 from tensorflow.keras.layers import  (
     Input,
@@ -11,268 +15,187 @@ from tensorflow.keras.layers import  (
     LeakyReLU,
     UpSampling2D,
     Lambda,
+    ZeroPadding2D
     )
 from tensorflow.keras.models import Model
-from model.utils import xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
+from tensorflow.keras.regularizers import l2
+from model.utils import compose,xywh_to_x1x2y1y2, xywh_to_y1x1y2x2, broadcast_iou, binary_crossentropy
 
 anchors_wh = np.array([[10, 13], [16, 30], [33, 23], [30, 61], [62, 45],
                        [59, 119], [116, 90], [156, 198], [373, 326]],
                       np.float32) / 416
 
-def  YoloConv(inputs,filters,kernel_size,strides):
-    
-    x = Conv2D(filters=filters,kernel_size=kernel_size,
-                strides=strides,padding='same')(inputs)
-    x = BatchNormalization()(x)
-    x = LeakyReLU(alpha=0.1)(x)
 
-    return x
+@wraps(Conv2D)
+def DarknetConv2D(*args,**kwargs):
+    '''Wrapper to set Darknet parameters for Convolution Layer'''
+    darknet_conv_kwargs = {'kernel_regularizer':l2(5e-4)}
+    darknet_conv_kwargs['padding'] = 'valid' if kwargs.get('strides') == (2,2) else 'same'
+    darknet_conv_kwargs.update(kwargs)
+    return Conv2D(*args,**darknet_conv_kwargs)
 
-def YoloResidual(inputs,filters):
-    shortcut = inputs
-    x = YoloConv(inputs,filters=filters,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=2*filters,kernel_size=3,strides=1)
-    x = Add()([shortcut,x])
-
-    return x
-
-
-def Darknet(shape=(256,256,3)):
-    inputs = Input(shape=shape)
-
-    x = YoloConv(inputs,filters=32,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=64,kernel_size=3,strides=2)
-    ## 1 Residual
-    for _ in range(1):
-        x = YoloResidual(x,filters=32)
-
-    x = YoloConv(x,filters=128,kernel_size=3,strides=2)
-    ## 2 Residual
-    for _ in range(2):
-        x = YoloResidual(x,filters=64)
-
-    x = YoloConv(x,filters=256,kernel_size=3,strides=2)
-    ## 8 Residual
-    for _ in range(8):
-        x = YoloResidual(x,filters=128)
-    y0 = x
-
-    x = YoloConv(x,filters=512,kernel_size=3,strides=2)
-    ## 8 Residual
-    for _ in range(8):
-        x = YoloResidual(x,filters=256)
-    y1 = x
-
-    x = YoloConv(x,filters=1024,kernel_size=3,strides=2)
-    ## 4 Residual
-    for _ in range(4):
-        x = YoloResidual(x,filters=512)
-    y2 = x
-
-    return Model(inputs,(y0,y1,y2),name='darknet_53')
-
-def YoloV3(shape=(416,416,3),num_classes=2,training=False):
-
-    final_filters = 3*(4+1+num_classes)
-
-    inputs = Input(shape=shape)
-
-    backbone = Darknet(shape)
-    x_small,x_medium,x_large = backbone(inputs)
-    ## Large Scale Detection
-    x = YoloConv(x_large,filters=512,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=1024,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=512,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=1024,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=512,kernel_size=1,strides=1)
-
-    y_large = YoloConv(x,filters=1024,kernel_size=3,strides=1)
-    y_large = Conv2D(filters=final_filters,kernel_size=1,strides=1,padding='same')(y_large)
-
-    ## Medium Scale Detection
-
-    x = YoloConv(x,filters=256,kernel_size=3,strides=1)
-    x = UpSampling2D(size=(2,2))(x)
-    x = Concatenate()([x,x_medium])
-    x = YoloConv(x,filters=256,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=512,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=256,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=512,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=256,kernel_size=1,strides=1)
-
-    y_medium = YoloConv(x,filters=512,kernel_size=3,strides=1)
-    y_medium = Conv2D(filters=final_filters,kernel_size=1,strides=1,padding='same')(y_medium)
-
-    ## Small Scale Detection
-
-    x = YoloConv(x,filters=128,kernel_size=1,strides=1)
-    x = UpSampling2D(size=(2,2))(x)
-    x = Concatenate()([x,x_small])
-    x = YoloConv(x,filters=128,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=256,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=128,kernel_size=1,strides=1)
-    x = YoloConv(x,filters=256,kernel_size=3,strides=1)
-    x = YoloConv(x,filters=128,kernel_size=1,strides=1)
-
-    y_small = YoloConv(x,filters=256,kernel_size=3,strides=1)
-    y_small = Conv2D(filters=final_filters,kernel_size=1,strides=1,padding='same')(y_small)
-
-    y_small_shape = tf.shape(y_small)
-    y_medium_shape = tf.shape(y_medium)
-    y_large_shape = tf.shape(y_large)
-
-    y_small = tf.reshape(y_small,(y_small_shape[0],y_small_shape[1],y_small_shape[2],3,-1))
-    y_medium = tf.reshape(y_medium,(y_medium_shape[0],y_medium_shape[1],y_medium_shape[2],3,-1))
-    y_large = tf.reshape(y_large,(y_large_shape[0],y_large_shape[1],y_large_shape[2],3,-1))
-
-    if training:
-        return Model(inputs,(y_small,y_medium,y_large))
-
-    box_small = Lambda(lambda  x: get_absolute_yolo_box(x,anchors_wh[0:3],num_classes))(y_small)
-    box_medium = Lambda(lambda x: get_absolute_yolo_box(x,anchors_wh[3:6],num_classes))(y_medium)
-    box_large = Lambda(lambda  x: get_absolute_yolo_box(x,anchors_wh[6:9],num_classes))(y_large)
-
-    outputs = (box_small,box_medium,box_large)
-    return Model(inputs,outputs)
-    
-def get_absolute_yolo_box(y_pred,valid_anchors_wh,num_classes):
-    t_xy,t_wh,objectness,classes = tf.split(
-        y_pred,(2,2,1,num_classes),axis=-1
+def DarknetConv2D_BN_Leaky(*args,**kwargs):
+    """Darknet Convolution followed by Batch Normalization and LeakyReLU"""
+    no_bias_kwargs = {'use_bias':False}
+    no_bias_kwargs.update(kwargs)
+    return compose(
+        DarknetConv2D(*args, **no_bias_kwargs),
+        BatchNormalization(),
+        LeakyReLU(alpha=0.1),
     )
 
-    objectness = tf.sigmoid(objectness)
-    classes = tf.sigmoid(classes)
+def resblock_body(x,filters,num_blocks):
+    """Residual blocks for Darknet"""
+    x = ZeroPadding2D(((1,0),(1,0)))(x)
+    x = DarknetConv2D_BN_Leaky(filters,(3,3),strides=(2,2))(x)
+    for _ in range(num_blocks):
+        y = compose(
+                DarknetConv2D_BN_Leaky(filters//2,(1,1)),
+                DarknetConv2D_BN_Leaky(filters,(3,3)))(x)
+        x = Add()([x,y])
+    return x
 
-    grid_size = tf.shape(y_pred)[1]
+def darknet_body(x):
+    '''Darknet body having 52 Convolutional layers'''
+    x = DarknetConv2D_BN_Leaky(32,(3,3))(x)
+    x = resblock_body(x,64,1)
+    x = resblock_body(x,128,2)
+    x = resblock_body(x,256,8)
+    x = resblock_body(x,512,8)
+    x = resblock_body(x,1024,4)
+    return x
 
-    C_xy = tf.meshgrid(tf.range(grid_size),tf.range(grid_size))
-    C_xy = tf.stack(C_xy,axis=-1)
-    C_xy = tf.expand_dims(C_xy,axis=2)
+def make_last_layers(x,filters,out_filters):
+    """"6 Convolution Leaky_RELU Layers followed by a linear Convolution layer"""
+    x = compose(
+        DarknetConv2D_BN_Leaky(filters,(1,1)),
+        DarknetConv2D_BN_Leaky(filters * 2,(3,3)),
+        DarknetConv2D_BN_Leaky(filters,(1,1)),
+        DarknetConv2D_BN_Leaky(filters * 2,(3,3)),
+        DarknetConv2D_BN_Leaky(filters,(1,1)))(x)
+    y = compose(
+        DarknetConv2D_BN_Leaky(filter * 2,(3,3)),
+        DarknetConv2D(out_filters,(1,1))(x)
+    ) 
+    return x,y
 
-    b_xy = tf.sigmoid(t_xy) + tf.cast(C_xy, tf.float32)
-    b_xy = b_xy / tf.cast(grid_size,tf.float32)
+def yolo_body(inputs,num_anchors,num_classes):
+    """Create YOLOv3 model"""
+    darknet = Model(inputs,darknet_body(inputs))
+    x,y1 = make_last_layers(darknet.output,512,num_anchors * (num_classes + 5))
 
-    b_wh = tf.exp(t_wh) * valid_anchors_wh
+    x = compose(
+            DarknetConv2D_BN_Leaky(256,(1,1)),
+            UpSampling2D(2))(x)
+    x = Concatenate()([x,darknet.layers[152].output])
+    x,y2 = make_last_layers(x,256,num_anchors * (num_classes + 5))
 
-    y_box = tf.concat([b_xy,b_wh],axis=1)
+    x = compose(
+            DarknetConv2D_BN_Leaky(128,(1,1)),
+            UpSampling2D(2))(x)
+    x,y3 = make_last_layers(x,128,num_anchors * (num_classes + 5))
 
-    return y_box,objectness,classes
-
-def get_relative_yolo_box(y_true,valid_anchors_wh):
-
-    grid_size = tf.shape(y_true)[1]
-    C_xy = tf.meshgrid(tf.range(grid_size), tf.range(grid_size))
-    C_xy = tf.expand_dims(tf.stack(C_xy, axis=-1), axis=2)
-
-    b_xy = y_true[..., 0:2]
-    b_wh = y_true[..., 2:4]
-    t_xy = b_xy * tf.cast(grid_size, tf.float32) - tf.cast(C_xy, tf.float32)
-
-    t_wh = tf.math.log(b_wh / valid_anchors_wh)
-    # b_wh could have some cells are 0, divided by anchor could result in inf or nan
-    t_wh = tf.where(
-        tf.logical_or(tf.math.is_inf(t_wh), tf.math.is_nan(t_wh)),
-        tf.zeros_like(t_wh), t_wh)
-
-    y_box = tf.concat([t_xy, t_wh], axis=-1)
-    return y_box
+    return Model(inputs,[y1,y2,y2])
 
 
-class YoloLoss(object):
-    def __init__(self,num_classes,valid_anchors_wh):
-        self.num_classes = num_classes
-        self.ignore_threshold = 0.5
-        self.valid_anchors_wh = valid_anchors_wh
-        self.lambda_coord = 5.0
-        self.lambda_noobj = 0.5
+def yolo_head(feats,anchors,num_classes,input_shape,calc_loss=False):
+    """Convert final predictions into bounding boxes"""
+    num_anchors = len(anchors)
+    # (batch, height, width, num_anchors, box_prams)
+    anchor_tensor = K.reshape(K.constant(anchors),[1,1,1,num_anchors,2])
 
-    def __call__(self,y_true,y_pred):
-        #Split y_pred into xy,wh,objectness and num_classes
+    grid_shape = K.shape(feats)[1:3] #(height,width)
+    grid_y = K.tile(K.reshape(K.arrange(0,stop=grid_shape[0]),[-1,1,1,1]),
+                    [1,grid_shape[1],1,1])
+    grid_x = K.tile(K.reshape(K.arrange(0,stop=grid_shape[1]),[1,-1,1,1]),
+                    [grid_shape[0],1,1,1])
+    grid = K.concatenate([grid_x,grid_y])
+    grid = K.cast(grid,K.dtype(feats))
 
-        pred_xy_rel = tf.sigmoid(y_pred[...,0:2])
-        pred_wh_rel = y_pred[...,2:4]
+    feats = K.reshape(
+                feats,[-1,grid.shape[0],grid.shape[1],num_anchors,num_classes+5])
 
-        pred_box_abs, pred_obj, pred_class = get_absolute_yolo_box(
-            y_pred,self.valid_anchors_wh,self.num_classes
-        )
-        pred_box_abs = xywh_to_x1x2y1y2(pred_box_abs)
+    box_xy = (K.sigmoid(feats[...,:2])+grid) / K.cast(grid_shape[::-1],K.dtype(feats))
+    box_wh = K.exp(feats[...,2:4]) * anchor_tensor / K.cast(input_shape[::-1],K.dtype(feats))
+    box_confidence = K.sigmoid(feats[...,4:5])
+    box_class_probs = K.sigmoid(feats[...,5:])
 
-        true_xy_abs, true_wh_abs,true_obj,true_class = tf.split(
-            y_true,(2,2,1,self.num_classes),axis=-1)
-        true_box_abs = tf.concat([true_xy_abs,true_wh_abs],axis=-1)
-        true_box_abs = xywh_to_x1x2y1y2(true_box_abs)
+    if calc_loss:
+        return grid,feats,box_xy,box_wh
 
-        true_box_rel = get_relative_yolo_box(y_true,self.valid_anchors_wh)
-        true_xy_rel = true_box_rel[...,0:2]
-        true_wh_rel = true_box_abs[...,2:4]
+    return box_xy,box_wh,box_confidence,box_class_probs
 
-        weight = 2 - true_wh_abs[...,0] * true_wh_abs[...,1]
+def yolo_correct_boxes(box_xy,box_wh,input_shape,image_shape):
+    """Get Correct boxes"""
+    box_yx = box_xy[...,::-1]
+    box_hw = box_wh[...,::-1]
+    input_shape = K.cast(input_shape,K.dtype(box_yx))
+    image_shape = K.cast(image_shape,K.dtype(box_hw))
+    new_shape = K.round(input_shape * K.min(input_shape / image_shape))
+    offset = (input_shape - new_shape ) / 2. / input_shape
+    scale = input_shape / new_shape
+    box_yx = (box_yx - offset) * scale
+    box_hw *= scale
 
-        xy_loss = self.calc_xy_loss(true_obj,true_xy_rel,pred_xy_rel,weight)
-        wh_loss = self.calc_wh_loss(true_obj,true_wh_rel,pred_wh_rel,weight)
-        class_loss = self.calc_class_loss(true_obj,true_class,pred_class)
+    box_mins = box_yx - (box_hw / 2.)
+    box_maxes = box_yx + (box_hw / 2.)
+    boxes = K.concatenate([
+        box_mins[...,0:1],  #y min
+        box_mins[...,1:2],  #x min
+        box_maxes[...,0:1], #y max
+        box_maxes[...,1:2]  # x max
+    ])
 
-        ignore_mask = self.calc_ignore_mask(true_obj,true_box_abs,pred_box_abs)
-        obj_loss = self.calc_obj_loss(true_obj,pred_obj,ignore_mask)
+    boxes *= K.concatenate([image_shape,image_shape])
+    return boxes
 
-        return xy_loss + wh_loss + class_loss + obj_loss,(xy_loss,wh_loss,
-                                                          class_loss,obj_loss)
+def yolo_boxes_and_scores(feats,anchors,num_classes,input_shape,image_shape):
+    '''Process Convolutional output'''
+    box_xy, box_wh, box_confidence, box_class_probs = yolo_head(feats,
+                        anchors,num_classes,input_shape)
+    boxes = yolo_correct_boxes(box_xy, box_wh, image_shape,image_shape)
+    boxes = K.reshape(boxes,[-1,4])
+    boxes_scores = box_confidence * box_class_probs
+    boxes_scores = K.reshape(boxes_scores,[-1,num_classes])
 
-    def calc_ignore_mask(self,true_obj,true_box,pred_box):
+    return boxes,boxes_scores
 
-        true_box_shape = tf.shape(true_box)
-        pred_box_shape = tf.shape(pred_box)
+def yolo_eval(yolo_outputs,anchors,num_classes,image_shape,
+             max_boxes=20,score_threshold=0.6,iou_threshold=0.5):
+    """Evaluate Yolo model on inout and return filters boxes"""
+    num_layers = len(yolo_outputs)
+    anchor_mask = [[6, 7, 8], [3, 4, 5], [0, 1, 2]] if num_layers == 3 else [[3, 4, 5], [1, 2, 3]]
+    input_shape = K.shape(yolo_outputs[0])[1:3] * 32
+    boxes = []
+    box_scores
+    for l in range(num_layers):
+        _boxes, _box_scores = yolo_boxes_and_scores(yolo_outputs[l],
+                                                    anchors[anchor_mask[l]],num_classes,input_shape,image_shape)
+        boxes.append(_boxes)
+        box_scores.append(_box_scores)
+    
+    boxes = K.concatenate(boxes,axis=0)
+    box_scores = K.concatenate(box_scores,axis=0)
 
-        true_box = tf.reshape(true_box,[true_box_shape[0],-1,4])
-        true_box = tf.sort(true_box,axis=1,direction='DESCENDING')
+    mask = box_scores >= score_threshold
+    max_box_tensor = K.constant(max_boxes,dtype='int32')
+    boxes_ = []
+    scores_ = []
+    classes_ =[]
+    for c in range(num_classes):
+        class_boxes = tf.boolean_mask(boxes,mask[:,c])
+        class_box_scores = tf.boolean_mask(box_scores[:,c],mask[:,c])
+        nms_index = tf.image.non_max_suppression(
+                    class_boxes,class_box_scores,max_box_tensor,iou_threshold=iou_threshold)
+        class_boxes = K.gather(class_boxes,nms_index)
+        class_box_scores = K.gather(class_box_scores,nms_index)
+        classes = K.ones_like(class_boxes,'int32') * c
+        boxes_.append(class_boxes)
+        scores_.append(class_box_scores)
+        classes_.append(classes)
+    boxes_ = K.concatenate(boxes_,axis=0)
+    scores_ = K.concatenate(scores_,axis=0)
+    classes_ = K.concatenate(classes_,axis=0)
 
-        true_box = true_box[:,0:100,:]
-        pred_box = tf.reshape(pred_box,[pred_box_shape[0],-1,4])
-
-        iou = broadcast_iou(pred_box,true_box)
+    return boxes_, scores_, classes_
         
-        best_iou = tf.reduce_max(iou,axis=-1)
-        best_iou = tf.reshape(best_iou,[pred_box_shape[0],pred_box_shape[1],pred_box_shape[2],pred_box_shape[3]])
-
-        ignore_mask = tf.cast(best_iou < self.ignore_threshold,tf.float32)
-        ignore_mask = tf.expand_dims(ignore_mask,axis=-1)
-
-        return ignore_mask
-
-    def calc_obj_loss(self,true_obj,pred_obj,ignore_mask):
-
-        obj_entropy = binary_crossentropy(pred_obj,true_obj)
-        noobj_loss = (1-true_obj)*obj_entropy * ignore_mask
-
-        obj_loss = tf.reduce_sum(noobj_loss,axis=(1,2,3,4))
-        noobj_loss = tf.reduce_sum(noobj_loss,axis=(1,2,3,4)) * self.lambda_noobj
-
-        return obj_loss + noobj_loss
-
-    def calc_class_loss(self,true_obj,true_class,pred_class):
-
-        class_loss = binary_crossentropy(pred_class,true_class)
-        class_loss = true_obj * class_loss
-        class_loss = tf.reduce_sum(class_loss,axis=(1,2,3,4))
-
-        return class_loss
-
-    def calc_xy_loss(self,true_obj,true_xy,pred_xy,weight):
-
-        xy_loss = tf.reduce_sum(tf.square(true_xy - pred_xy),axis=-1)
-        true_obj = tf.squeeze(true_obj,axis=-1)
-
-        xy_loss = true_obj * xy_loss * weight
-        xy_loss = tf.reduce_sum(xy_loss,axis=(1,2,3)) * self.lambda_coord
-
-        return xy_loss
-
-    def calc_wh_loss(self,true_obj,true_wh,pred_wh,weight):
-
-        wh_loss = tf.reduce_sum(tf.square(true_wh-pred_wh),axis=-1)
-        true_obj = tf.squeeze(true_obj,axis=-1)
-
-        wh_loss = true_obj * wh_loss * weight
-        wh_loss = tf.reduce_sum(wh_loss,axis=(1,2,3)) * self.lambda_coord
-        return wh_loss
-
