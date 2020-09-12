@@ -22,4 +22,4 @@ def letter_box(image,size):
     new_image = Image.new('RGB',size,(128,128,128))
     new_image.paste(image,((width-new_width)//2,(height-new_height)//2))
 
-    return new image
+    return new_image

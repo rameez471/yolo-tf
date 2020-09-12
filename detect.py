@@ -26,10 +26,10 @@ class YOLO(object):
         'gpu_num': settings.GPU_NUM
     }
 
-    @clasmethod
+    @classmethod
     def get_defaults(cls,n):
-        if n in cls.default:
-            return cls.default[n]
+        if n in cls.defaults:
+            return cls.defaults[n]
         else:
             return 'Unrecognized attribute name "' + n + '"'
     
@@ -42,18 +42,18 @@ class YOLO(object):
 
 
     def get_class(self):
-        class_path = os.path.expanduser(self.class_path)
+        class_path = os.path.expanduser(self.classes_path)
         with open(class_path) as f:
             class_names = f.readlines()
-        class_names = [c.strip() for c in class_name]
+        class_names = [c.strip() for c in class_names]
         return class_names
 
     def get_anchors(self):
-        anchors_path = self.os.path.expanduser(self.anchors_path)
+        anchors_path = os.path.expanduser(self.anchors_path)
         with open(anchors_path) as f:
-            anchors = f.readlines()
+            anchors = f.readline()
         anchors = [float(x) for x in anchors.split(',')]
-        return np.array(anchors).reshape(-1,2)
+        return np.array(anchors).reshape(-1, 2)
 
     def load_yolo_model(self):
         model_path = os.path.expanduser(self.model_path)
@@ -104,16 +104,18 @@ class YOLO(object):
         else:
             new_image_size = (image.width - (image.width % 32), image.height - (image.height % 32))
             boxed_image = letter_box(image, new_image_size)
-        
-        image_data /=255
+        image_data = np.array(boxed_image, dtype='float32')
+
+        image_data /= 255.
         image_data = np.expand_dims(image_data,0)
 
         out_boxes, out_scores, out_classes = self.compute_output(image_data,[image.size[1],image.size[0]])
 
-        print('FOund {} boxes for {}'.format(len(out_boxes),'img'))
+        print('Found {} boxes for {}'.format(len(out_boxes),'img'))
         thickness = (image.size[0] + image.size[1]) // 300
 
         for i,c in reversed(list(enumerate(out_classes))):
+            print(c)
             predicted_class = self.class_names[c]
             box = out_boxes[i]
             score = out_scores[i] 
@@ -123,7 +125,7 @@ class YOLO(object):
             label_size = draw.textsize(label)
 
             top, left, bottom, right = box
-            top = max(0,np,floor(top + 0.5).astype('int32'))
+            top = max(0,np.floor(top + 0.5).astype('int32'))
             left = max(0, np.floor(left + 0.5).astype('int32'))
             bottom = min(image.size[1],np.floor(bottom + 0.5).astype('int32'))
             right = min(image.size[0],np.floor(right + 0.5).astype('int32'))
@@ -165,7 +167,7 @@ def detect_video(yolo,video_path,output_path=''):
         out = cv2.VideoWriter(output_path,video_FourCC,video_fps,video_size)
     accum_time = 0
     curr_fps = 0
-    fps = 'FPS: ??
+    fps = 'FPS: ?'
     prev_time = timer()
     while True:
         return_value, frame = vid.read()

@@ -22,12 +22,12 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--model_path',type=str,
-        help='path to model weights, default '+ YOLO.default('model_path')
+        help='path to model weights'
     )
 
     parser.add_argument(
         '--anchors_path', type=str,
-        help='path to anchors definaition, default '+ YOLO.default('anchors_path')
+        help='path to anchors definaition'
     )
 
     parser.add_argument(
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     FLAGS = parser.parse_args()
 
     if FLAGS.image:
-        print('Image detection mode')
+        print('Image detection mode: ')
         if 'input' in FLAGS:
             print('Ignoring command line arguments: '+FLAGS.input +','+FLAGS.output)
         detect_img(YOLO(**vars(FLAGS)))
