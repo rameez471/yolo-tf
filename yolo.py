@@ -5,7 +5,7 @@ from PIL import Image
 
 def detect_img(yolo):
     while True:
-        img = input('Input image file')
+        img = input('Input image file: ')
         try:
             image = Image.open(img)
         except:
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     FLAGS = parser.parse_args()
 
     if FLAGS.image:
-        print('Image detection mode: ')
+        print('Image detection mode')
         if 'input' in FLAGS:
             print('Ignoring command line arguments: '+FLAGS.input +','+FLAGS.output)
         detect_img(YOLO(**vars(FLAGS)))

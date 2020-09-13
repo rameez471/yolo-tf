@@ -6,7 +6,7 @@ from timeit import default_timer as timer
 
 import numpy as np
 import tensorflow as tf
-from PIL import Image,ImageDraw
+from PIL import Image,ImageDraw,ImageFont
 from tensorflow.keras.layers import Input
 from tensorflow.keras.models import load_model
 
@@ -112,17 +112,19 @@ class YOLO(object):
         out_boxes, out_scores, out_classes = self.compute_output(image_data,[image.size[1],image.size[0]])
 
         print('Found {} boxes for {}'.format(len(out_boxes),'img'))
+
+        font = ImageFont.truetype(font='font/FiraMono-Medium.otf',
+                                  size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
         for i,c in reversed(list(enumerate(out_classes))):
-            print(c)
             predicted_class = self.class_names[c]
             box = out_boxes[i]
             score = out_scores[i] 
 
             label = '{} {:.2f}'.format(predicted_class, score)
             draw = ImageDraw.Draw(image)
-            label_size = draw.textsize(label)
+            label_size = draw.textsize(label,font)
 
             top, left, bottom, right = box
             top = max(0,np.floor(top + 0.5).astype('int32'))
@@ -144,7 +146,7 @@ class YOLO(object):
                 [tuple(text_origin), tuple(text_origin + label_size)],
                 fill=self.colors[c])
             
-            draw.text(text_origin, label, fill=(0,0,0))
+            draw.text(text_origin, label, fill=(0,0,0),font=font)
             del draw
 
         end = timer()
