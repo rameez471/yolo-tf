@@ -88,9 +88,10 @@ def yolo_body(inputs,num_anchors,num_classes):
     x = compose(
             DarknetConv2D_BN_Leaky(128,(1,1)),
             UpSampling2D(2))(x)
+    x = Concatenate()([x,darknet.layers[92].output])
     x,y3 = make_last_layers(x,128,num_anchors * (num_classes + 5))
 
-    return Model(inputs,[y1,y2,y2])
+    return Model(inputs,[y1,y2,y3])
 
 
 def yolo_head(feats,anchors,num_classes,input_shape,calc_loss=False):
@@ -118,16 +119,16 @@ def yolo_head(feats,anchors,num_classes,input_shape,calc_loss=False):
     if calc_loss:
         return grid,feats,box_xy,box_wh
 
-    return box_xy,box_wh,box_confidence,box_class_probs
+    return box_xy, box_wh, box_confidence, box_class_probs
 
 def yolo_correct_boxes(box_xy,box_wh,input_shape,image_shape):
     """Get Correct boxes"""
-    box_yx = box_xy[...,::-1]
-    box_hw = box_wh[...,::-1]
-    input_shape = K.cast(input_shape,K.dtype(box_yx))
-    image_shape = K.cast(image_shape,K.dtype(box_hw))
-    new_shape = K.round(input_shape * K.min(input_shape / image_shape))
-    offset = (input_shape - new_shape ) / 2. / input_shape
+    box_yx = box_xy[..., ::-1]
+    box_hw = box_wh[..., ::-1]
+    input_shape = K.cast(input_shape, K.dtype(box_yx))
+    image_shape = K.cast(image_shape, K.dtype(box_yx))
+    new_shape = K.round(image_shape * K.min(input_shape / image_shape))
+    offset = (input_shape - new_shape) / 2. / input_shape
     scale = input_shape / new_shape
     box_yx = (box_yx - offset) * scale
     box_hw *= scale
@@ -135,25 +136,25 @@ def yolo_correct_boxes(box_xy,box_wh,input_shape,image_shape):
     box_mins = box_yx - (box_hw / 2.)
     box_maxes = box_yx + (box_hw / 2.)
     boxes = K.concatenate([
-        box_mins[...,0:1],  #y min
-        box_mins[...,1:2],  #x min
-        box_maxes[...,0:1], #y max
-        box_maxes[...,1:2]  # x max
+        box_mins[..., 0:1],  # y_min
+        box_mins[..., 1:2],  # x_min
+        box_maxes[..., 0:1],  # y_max
+        box_maxes[..., 1:2]  # x_max
     ])
 
-    boxes *= K.concatenate([image_shape,image_shape])
+    # Scale boxes back to original image shape.
+    boxes *= K.concatenate([image_shape, image_shape])
     return boxes
 
 def yolo_boxes_and_scores(feats,anchors,num_classes,input_shape,image_shape):
     '''Process Convolutional output'''
     box_xy, box_wh, box_confidence, box_class_probs = yolo_head(feats,
-                        anchors,num_classes,input_shape)
-    boxes = yolo_correct_boxes(box_xy, box_wh, image_shape,image_shape)
-    boxes = K.reshape(boxes,[-1,4])
-    boxes_scores = box_confidence * box_class_probs
-    boxes_scores = K.reshape(boxes_scores,[-1,num_classes])
-
-    return boxes,boxes_scores
+                                                                anchors, num_classes, input_shape)
+    boxes = yolo_correct_boxes(box_xy, box_wh, input_shape, image_shape)
+    boxes = K.reshape(boxes, [-1, 4])
+    box_scores = box_confidence * box_class_probs
+    box_scores = K.reshape(box_scores, [-1, num_classes])
+    return boxes, box_scores
 
 def yolo_eval(yolo_outputs,anchors,num_classes,image_shape,
              max_boxes=20,score_threshold=0.6,iou_threshold=0.5):

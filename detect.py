@@ -88,65 +88,66 @@ class YOLO(object):
     @tf.function
     def compute_output(self,image_data,image_shape):
         self.input_image_shape = tf.constant(image_shape)
-        
-        boxes, scores, classes = yolo_eval(self.yolo_model(image_data),self.anchors,
-                                            len(self.class_names),self.input_image_shape,
-                                            score_threshold=self.score,iou_threshold=self.iou)
+
+        boxes, scores, classes = yolo_eval(self.yolo_model(image_data), self.anchors,
+                                           len(self.class_names), self.input_image_shape,
+                                           score_threshold=self.score, iou_threshold=self.iou)
         return boxes, scores, classes
 
     def detect_image(self,image):
         start = timer()
 
-        if self.model_image_size != (None,None):
-            assert self.model_image_size[0] % 32 == 0, 'Multiple of 32 required'
-            assert self.model_image_size[1] % 32 ==0, 'Multiple of 32 required'
-            boxed_image = letter_box(image,tuple(reversed(self.model_image_size)))
+        if self.model_image_size != (None, None):
+            assert self.model_image_size[0] % 32 == 0, 'Multiples of 32 required'
+            assert self.model_image_size[1] % 32 == 0, 'Multiples of 32 required'
+            boxed_image = letter_box(image, tuple(reversed(self.model_image_size)))
         else:
-            new_image_size = (image.width - (image.width % 32), image.height - (image.height % 32))
+            new_image_size = (image.width - (image.width % 32),
+                              image.height - (image.height % 32))
             boxed_image = letter_box(image, new_image_size)
         image_data = np.array(boxed_image, dtype='float32')
 
         image_data /= 255.
-        image_data = np.expand_dims(image_data,0)
+        image_data = np.expand_dims(image_data, 0)  # Add batch dimension.
 
-        out_boxes, out_scores, out_classes = self.compute_output(image_data,[image.size[1],image.size[0]])
+        out_boxes, out_scores, out_classes = self.compute_output(image_data, [image.size[1], image.size[0]])
 
-        print('Found {} boxes for {}'.format(len(out_boxes),'img'))
+        print('Found {} boxes for {}'.format(len(out_boxes), 'img'))
 
         font = ImageFont.truetype(font='font/FiraMono-Medium.otf',
                                   size=np.floor(3e-2 * image.size[1] + 0.5).astype('int32'))
         thickness = (image.size[0] + image.size[1]) // 300
 
-        for i,c in reversed(list(enumerate(out_classes))):
+        for i, c in reversed(list(enumerate(out_classes))):
             predicted_class = self.class_names[c]
             box = out_boxes[i]
-            score = out_scores[i] 
+            score = out_scores[i]
 
             label = '{} {:.2f}'.format(predicted_class, score)
             draw = ImageDraw.Draw(image)
-            label_size = draw.textsize(label,font)
+            label_size = draw.textsize(label, font)
 
             top, left, bottom, right = box
-            top = max(0,np.floor(top + 0.5).astype('int32'))
+            top = max(0, np.floor(top + 0.5).astype('int32'))
             left = max(0, np.floor(left + 0.5).astype('int32'))
-            bottom = min(image.size[1],np.floor(bottom + 0.5).astype('int32'))
-            right = min(image.size[0],np.floor(right + 0.5).astype('int32'))
-            print(label,(left,top),(right,bottom))
+            bottom = min(image.size[1], np.floor(bottom + 0.5).astype('int32'))
+            right = min(image.size[0], np.floor(right + 0.5).astype('int32'))
+            print(label, (left, top), (right, bottom))
 
-            if top - label_size[1] >=0:
-                text_origin = np.array([left,top - label_size[1]])
+            if top - label_size[1] >= 0:
+                text_origin = np.array([left, top - label_size[1]])
             else:
-                text_origin = np.array([left,top+1])
+                text_origin = np.array([left, top + 1])
 
+            # My kingdom for a good redistributable image drawing library.
             for i in range(thickness):
-                draw.rectangle([left+i, top+i, right-i, bottom-i],
-                                outline=self.colors[c])
-
+                draw.rectangle(
+                    [left + i, top + i, right - i, bottom - i],
+                    outline=self.colors[c])
             draw.rectangle(
                 [tuple(text_origin), tuple(text_origin + label_size)],
                 fill=self.colors[c])
-            
-            draw.text(text_origin, label, fill=(0,0,0),font=font)
+            draw.text(text_origin, label, fill=(0, 0, 0), font=font)
             del draw
 
         end = timer()
