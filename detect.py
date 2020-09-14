@@ -13,7 +13,6 @@ from tensorflow.keras.models import load_model
 import settings
 from model.yolo import yolo_eval,yolo_body
 from model.utils import letter_box
-import cv2
 
 class YOLO(object):
     defaults = {
@@ -155,22 +154,22 @@ class YOLO(object):
         return image
 
 def detect_video(yolo,video_path,output_path=''):
-    
+    import cv2
     vid = cv2.VideoCapture(video_path)
+    print(video_path)
     if not vid.isOpened():
-        raise ValueError('Could not open video')
+        raise IOError("Couldn't open webcam or video")
     video_FourCC = int(vid.get(cv2.CAP_PROP_FOURCC))
     video_fps = vid.get(cv2.CAP_PROP_FPS)
     video_size = (int(vid.get(cv2.CAP_PROP_FRAME_WIDTH)),
                   int(vid.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-    isOutput = True if output_path != '' else False
-
+    isOutput = True if output_path != "" else False
     if isOutput:
-        print('!!! TYPE:', type(output_path), type(video_FourCC), type(video_fps), type(video_size))
-        out = cv2.VideoWriter(output_path,video_FourCC,video_fps,video_size)
+        print("!!! TYPE:", type(output_path), type(video_FourCC), type(video_fps), type(video_size))
+        out = cv2.VideoWriter(output_path, video_FourCC, video_fps, video_size)
     accum_time = 0
     curr_fps = 0
-    fps = 'FPS: ?'
+    fps = "FPS: ??"
     prev_time = timer()
     while True:
         return_value, frame = vid.read()
@@ -184,10 +183,12 @@ def detect_video(yolo,video_path,output_path=''):
         curr_fps = curr_fps + 1
         if accum_time > 1:
             accum_time = accum_time - 1
-            fps = 'FPS: '+ str(curr_fps)
+            fps = "FPS: " + str(curr_fps)
             curr_fps = 0
-        cv2.putText(result,text=fps,org=(3,15),fontScale=0.50,color=(255,0,0),thickness=2)
-        cv2.namedWindow('result',result)
+        cv2.putText(result, text=fps, org=(3, 15), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.50, color=(255, 0, 0), thickness=2)
+        cv2.namedWindow("result", cv2.WINDOW_NORMAL)
+        cv2.imshow("result", result)
         if isOutput:
             out.write(result)
         if cv2.waitKey(1) & 0xFF == ord('q'):
