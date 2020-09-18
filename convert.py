@@ -25,8 +25,8 @@ from tensorflow.keras.utils import plot_model as plot
 
 parser = argparse.ArgumentParser(description='Darknet to Keras Converter')
 parser.add_argument('config_path', help='Pah to Darknet cfg file')
-parser.add_argument('weights_path', help='Path to Darknet weights file')
-parser.add_argument('output_apth', help='Path to output model file')
+parser.add_argument('weight_path', help='Path to Darknet weights file')
+parser.add_argument('output_path', help='Path to output model file')
 parser.add_argument(
     '-p',
     '--plot_model',
@@ -107,7 +107,7 @@ def main(args):
             size = int(cfg_parser[section]['size'])
             stride = int(cfg_parser[section]['stride'])
             pad = int(cfg_parser[section]['pad'])
-            activation = int(cfg_parser[section]['activation'])
+            activation = cfg_parser[section]['activation']
             batch_normalize = 'batch_normalize' in cfg_parser[section]
             padding = 'same' if pad == 1 and stride == 1 else 'valid'
 
@@ -119,11 +119,17 @@ def main(args):
 
             print('conv2d','bn' if batch_normalize else ' ',activation,weight_shape)
 
-            conv_bias = np.ndarray(shape=(filters,),dtype='float32',buffer=weights_file.read(filter * 4))
+            conv_bias = np.ndarray(
+                shape=(filters,),
+                dtype='float32',
+                buffer=weights_file.read(filters * 4))
             count += filters
 
             if batch_normalize:
-                bn_weights = np.ndarray(shape=(3,filters),dtype='float32', buffer=weights_file.read(filter * 12))
+                bn_weights = np.ndarray(
+                    shape=(3, filters),
+                    dtype='float32',
+                    buffer=weights_file.read(filters * 12))
                 count += 3*filters
 
                 bn_weight_list = [
@@ -134,7 +140,7 @@ def main(args):
                 ]
             
             conv_weights = np.ndarray(shape=darknet_w_shape,dtype='float32', 
-                                       buffer=weights_file.read_file(weight_size * 4))
+                                       buffer=weights_file.read(weight_size * 4))
             count += weight_size
 
             ### channel first to channel last

@@ -37,6 +37,6 @@ UNFREEZE_TRAIN_LR = 1e-4
 # Unfreeze training batch size
 UNFREEZE_TRAIN_BATCH_SIZE = 1
 
-UNFREEZE_TRAIN_OUTPUT_WEIGHTS = 'trained_weights_stage_2.h5'
+UNFREEZE_TRAIN_OUTPUT_WEIGHTS = 'chess.h5'
 # Final output weights
 FINAL_OUTPUT_WEIGHTS = 'trained_weights_final.h5'
