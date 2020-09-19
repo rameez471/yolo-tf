@@ -69,7 +69,7 @@ def make_last_layers(x,filters,out_filters):
         DarknetConv2D_BN_Leaky(filters * 2,(3,3)),
         DarknetConv2D_BN_Leaky(filters,(1,1)))(x)
     y = compose(
-        DarknetConv2D_BN_Leaky(filter * 2,(3,3)),
+        DarknetConv2D_BN_Leaky(filters * 2,(3,3)),
         DarknetConv2D(out_filters,(1,1))(x)
     ) 
     return x,y
@@ -91,7 +91,7 @@ def yolo_body(inputs,num_anchors,num_classes):
     x = Concatenate()([x,darknet.layers[92].output])
     x,y3 = make_last_layers(x,128,num_anchors * (num_classes + 5))
 
-    return Model(inputs,[y1,y2,y3])
+    return Model(inputs, [y1, y2, y3])
 
 
 def yolo_head(feats,anchors,num_classes,input_shape,calc_loss=False):
@@ -293,7 +293,7 @@ def yolo_loss(args, anchors, num_classes, ignore_threshold=0.5, print_loss=True)
                                             anchors[anchor_mask[l]],num_classes,input_shape,calc_loss=True)
         pred_box = K.concatenate([pred_xy, pred_wh])
 
-        raw_true_xy = y_true[l][...,:2] * grid_shapes[l][::-1] - grid
+        raw_true_xy = y_true[l][...,:2] * grid_shape[l][::-1] - grid
         raw_true_wh = K.log(y_true[l][...,2:4] / anchors[anchor_mask[l]] * input_shape[::-1])
         raw_true_wh = K.switch(object_mask, raw_true_wh, K.zeros_like(raw_true_wh))
         box_loss_scale = 2 - y_true[l][...,2:3] * y_true[l][...,3:4]
@@ -305,10 +305,10 @@ def yolo_loss(args, anchors, num_classes, ignore_threshold=0.5, print_loss=True)
             true_box = tf.boolean_mask(y_true[l][b,...,0:4], object_mask_bool[b,...,0])
             iou = box_iou(pred_box[b], true_box)
             best_iou = K.max(iou, axis=-1)
-            ignore_mask = ingore_mask.write(b, K.cast(best_iou < ignore_threshold, K.dtype(true_box)))
-            return b+1, ingore_mask
+            ignore_mask = ignore_mask.write(b, K.cast(best_iou < ignore_threshold, K.dtype(true_box)))
+            return b+1, ignore_mask
 
-        _, ignore_mask = tf.while_loop(lambda b: *args: b<m, loop_body.[0, ignore_mask]) 
+        _, ignore_mask = tf.while_loop(lambda b, *args: b<m, loop_body ,[0, ignore_mask]) 
         ignore_mask = ignore_mask.stack()
         ignore_mask = K.expand_dims(ignore_mask, -1)
 
@@ -316,7 +316,7 @@ def yolo_loss(args, anchors, num_classes, ignore_threshold=0.5, print_loss=True)
                                                                         from_logits=True)
         wh_loss = object_mask * box_loss_scale * 0.5 * K.square(raw_true_wh - raw_pred[...,2:4])
         confidence_loss = object_mask * K.binary_crossentropy(object_mask,raw_pred[...,4:5], from_logits=True) + \
-                            (1-object_mask) * K.binary_crossentropy(object_mask,raw_pred[...4:5],from_logits=True) * ignore_mask
+                            (1-object_mask) * K.binary_crossentropy(object_mask,raw_pred[...,4:5],from_logits=True) * ignore_mask
 
         class_loss = object_mask * K.binary_crossentropy(true_class_probs, raw_pred[...,5:],from_logits=True)
 

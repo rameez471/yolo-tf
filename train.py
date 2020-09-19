@@ -1,11 +1,12 @@
-""""
+"""
 Train the Yolo for your dataset
-""""
+"""
 
 import os
 import argparse
 import sys
 import numpy as np
+import tensorflow.keras.backend as K
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from tensorflow.keras.layers import Input, Lambda
@@ -28,6 +29,7 @@ def _main(FLAGS):
     input_shape = settings.MODEL_IMAGE_SIZE
 
     model = create_model(input_shape, anchors, num_classes,
+                        freeze_body=2,
                          weights_path=settings.PRETRAINED_WEIGHT)
     
     logging = TensorBoard(log_dir=log_dir)
@@ -76,9 +78,9 @@ def get_classes(classes_path):
 def get_anchors(anchors_path):
     '''Load the anchors'''
     with open(anchors_path) as f:
-        anchors = f.readlines()
+        anchors = f.readline()
     anchors = [float(x) for x in anchors.split(',')]
-    return np.array(anchors).reshape(-1,2)
+    return np.array(anchors).reshape(-1, 2)
 
 def create_model(input_shape, anchors, num_classes,load_pretrained=True,freeze_body=2,weights_path='model_data/yolo_weights.h5'):
     '''Create training model'''
