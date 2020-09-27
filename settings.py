@@ -9,7 +9,7 @@ SCORE = 0.3
 #IOU VALUE
 IOU = 0.45
 #Image size
-MODEL_IMAGE_SIZE = (416,416)
+MODEL_IMAGE_SIZE = (416, 416)
 #GPU
 GPU_NUM = 1
 #Train data path

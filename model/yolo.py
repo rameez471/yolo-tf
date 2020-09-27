@@ -36,8 +36,8 @@ def DarknetConv2D_BN_Leaky(*args,**kwargs):
     return compose(
         DarknetConv2D(*args, **no_bias_kwargs),
         BatchNormalization(),
-        LeakyReLU(alpha=0.1),
-    )
+        LeakyReLU(alpha=0.1))
+
 
 def resblock_body(x,filters,num_blocks):
     """Residual blocks for Darknet"""
@@ -70,8 +70,7 @@ def make_last_layers(x,filters,out_filters):
         DarknetConv2D_BN_Leaky(filters,(1,1)))(x)
     y = compose(
         DarknetConv2D_BN_Leaky(filters * 2,(3,3)),
-        DarknetConv2D(out_filters,(1,1))(x)
-    ) 
+        DarknetConv2D(out_filters,(1,1)))(x) 
     return x,y
 
 def yolo_body(inputs,num_anchors,num_classes):
