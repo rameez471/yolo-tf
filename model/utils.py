@@ -3,12 +3,12 @@ from functools import reduce
 import tensorflow as tf
 from PIL import Image
 
-def compose(*func):
+def compose(*funcs):
     """Compose functions"""
-    if func:
-        return reduce(lambda f,g: lambda *a,**kw:g(f(*a,**kw)),func)
+    if funcs:
+        return reduce(lambda f, g: lambda *a, **kw: g(f(*a, **kw)), funcs)
     else:
-        raise ValueError('Composition of empty function not supported')
+        raise ValueError('Composition of empty sequence not supported.')
 
 def letter_box(image,size):
     '''Resize image with unchanges aspect ratio using padding'''
